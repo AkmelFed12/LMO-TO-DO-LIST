@@ -63,7 +63,7 @@ export const Leaderboard: React.FC = () => {
   return (
     <div className="max-w-3xl mx-auto">
       <div className="text-center mb-8 relative">
-        <h2 className="text-3xl font-serif font-bold text-gray-800 flex items-center justify-center gap-3">
+        <h2 className="text-3xl display-font font-bold text-gray-800 flex items-center justify-center gap-3">
           <Trophy className="text-amber-400" size={32} />
           Classement Général
         </h2>

@@ -14,6 +14,7 @@ export interface Question {
   correctAnswerIndex: number;
   explanation?: string;
   difficulty?: Difficulty;
+  topic?: string;
   source?: 'AI' | 'MANUAL';
 }
 
@@ -37,6 +38,15 @@ export enum AppView {
 export interface GlobalState {
   isManualOverride: boolean; // If true, ignores time check
   isQuizOpen: boolean; // Manual open/close state if override is on
+}
+
+export interface DailyQuiz {
+  id?: number;
+  date: string; // YYYY-MM-DD (UTC)
+  questionIds: number[];
+  createdAt: string; // ISO
+  closesAt: string; // ISO (UTC)
+  isActive: boolean;
 }
 
 export interface Badge {

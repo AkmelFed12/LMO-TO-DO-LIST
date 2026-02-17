@@ -67,7 +67,7 @@ export const Profile: React.FC<ProfileProps> = ({ user }) => {
           <div className="w-24 h-24 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white shadow-md">
             <span className="text-4xl font-serif text-emerald-700 font-bold">{user.username.charAt(0).toUpperCase()}</span>
           </div>
-          <h2 className="text-3xl font-serif font-bold text-gray-800">{user.username}</h2>
+          <h2 className="text-3xl display-font font-bold text-gray-800">{user.username}</h2>
           <span className="inline-block mt-2 px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-semibold uppercase tracking-wide">
              {user.role === 'ADMIN' ? 'Administrateur' : 'Membre ASAA'}
           </span>
@@ -76,7 +76,7 @@ export const Profile: React.FC<ProfileProps> = ({ user }) => {
 
       {/* Badges Section */}
       <div className="space-y-4">
-        <h3 className="text-xl font-serif font-bold text-gray-800 flex items-center gap-2">
+        <h3 className="text-xl display-font font-bold text-gray-800 flex items-center gap-2">
            <Award className="text-amber-500" />
            Badges & Réussites
         </h3>

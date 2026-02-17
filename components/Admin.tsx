@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getGlobalState, saveGlobalState, getQuestionsBank, saveQuestion, deleteQuestion, getResults, getUsers, saveUser } from '../services/storageService';
 import { GlobalState, Question, Difficulty, User, QuizResult } from '../types';
+import { generateBankQuestions } from '../services/geminiService';
 import { Power, Settings, Clock, Loader2, Database, Upload, Trash2, Edit2, Plus, Save, X, Mail, Users, LayoutDashboard, Search, Filter, Shield, ShieldAlert, Download } from 'lucide-react';
 
 export const Admin: React.FC = () => {
@@ -19,17 +20,23 @@ export const Admin: React.FC = () => {
 
   // Edit Question State
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const csvInputRef = useRef<HTMLInputElement>(null);
   const initialFormState: Question = {
       questionText: '',
       options: ['', '', '', ''],
       correctAnswerIndex: 0,
       explanation: '',
       difficulty: 'MEDIUM',
+      topic: '',
       source: 'MANUAL'
   };
   const [formData, setFormData] = useState<Question>(initialFormState);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generateTarget, setGenerateTarget] = useState(10000);
+  const [generateBatch, setGenerateBatch] = useState(50);
+  const [generateProgress, setGenerateProgress] = useState(0);
 
   useEffect(() => {
     refreshData();
@@ -194,6 +201,133 @@ export const Admin: React.FC = () => {
       reader.readAsText(file);
   };
 
+  const parseCsv = (text: string): string[][] => {
+    const rows: string[][] = [];
+    let current = '';
+    let row: string[] = [];
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const next = text[i + 1];
+      if (char === '"' && next === '"') {
+        current += '"';
+        i++;
+        continue;
+      }
+      if (char === '"') {
+        inQuotes = !inQuotes;
+        continue;
+      }
+      if (char === ',' && !inQuotes) {
+        row.push(current.trim());
+        current = '';
+        continue;
+      }
+      if ((char === '\n' || char === '\r') && !inQuotes) {
+        if (current.length > 0 || row.length > 0) {
+          row.push(current.trim());
+          rows.push(row);
+        }
+        current = '';
+        row = [];
+        continue;
+      }
+      current += char;
+    }
+    if (current.length > 0 || row.length > 0) {
+      row.push(current.trim());
+      rows.push(row);
+    }
+    return rows;
+  };
+
+  const normalizeHeader = (h: string) => h.toLowerCase().replace(/\s+/g, '').replace(/_/g, '');
+
+  const handleImportCsv = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target?.result as string;
+        const rows = parseCsv(text);
+        if (rows.length < 2) return;
+        const headers = rows[0].map(normalizeHeader);
+
+        const mapIndex = (keys: string[]) => headers.findIndex(h => keys.includes(h));
+        const idxQuestion = mapIndex(['questiontext', 'question']);
+        const idxOpt1 = mapIndex(['option1', 'opt1', 'choix1']);
+        const idxOpt2 = mapIndex(['option2', 'opt2', 'choix2']);
+        const idxOpt3 = mapIndex(['option3', 'opt3', 'choix3']);
+        const idxOpt4 = mapIndex(['option4', 'opt4', 'choix4']);
+        const idxCorrect = mapIndex(['correctanswerindex', 'correct', 'answerindex']);
+        const idxExplanation = mapIndex(['explanation', 'explication']);
+        const idxDifficulty = mapIndex(['difficulty', 'niveau']);
+        const idxTopic = mapIndex(['topic', 'theme']);
+
+        let count = 0;
+        for (let i = 1; i < rows.length; i++) {
+          const r = rows[i];
+          const questionText = r[idxQuestion];
+          if (!questionText) continue;
+          const options = [r[idxOpt1], r[idxOpt2], r[idxOpt3], r[idxOpt4]].filter(Boolean);
+          if (options.length < 4) continue;
+
+          const correctAnswerIndex = parseInt(r[idxCorrect] || '0', 10);
+          await saveQuestion({
+            questionText,
+            options: options.slice(0, 4),
+            correctAnswerIndex: isNaN(correctAnswerIndex) ? 0 : correctAnswerIndex,
+            explanation: r[idxExplanation] || '',
+            difficulty: (r[idxDifficulty] as Difficulty) || 'MEDIUM',
+            topic: r[idxTopic] || '',
+            source: 'MANUAL'
+          });
+          count++;
+        }
+        alert(`${count} questions importées depuis CSV.`);
+        refreshData();
+      } catch (err) {
+        console.error(err);
+        alert("Erreur fichier CSV.");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleGenerateBank = async () => {
+    if (isGenerating) return;
+    setIsGenerating(true);
+    setGenerateProgress(0);
+
+    try {
+      const existing = await getQuestionsBank();
+      const existingTexts = new Set(existing.map(q => q.questionText.trim().toLowerCase()));
+      let total = 0;
+
+      while (total < generateTarget) {
+        const batchSize = Math.min(generateBatch, generateTarget - total);
+        const generated = await generateBankQuestions(batchSize);
+        for (const q of generated) {
+          const key = q.questionText.trim().toLowerCase();
+          if (existingTexts.has(key)) continue;
+          existingTexts.add(key);
+          await saveQuestion(q);
+          total++;
+          if (total >= generateTarget) break;
+        }
+        setGenerateProgress(total);
+      }
+      alert(`Génération terminée: ${total} questions.`);
+      refreshData();
+    } catch (err) {
+      console.error(err);
+      alert("Erreur lors de la génération IA.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   if (loading && questions.length === 0) {
     return (
       <div className="flex justify-center py-20">
@@ -219,7 +353,7 @@ export const Admin: React.FC = () => {
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex items-center justify-between mb-2">
-         <h2 className="text-2xl font-bold font-serif text-gray-800">Panneau d'Administration</h2>
+         <h2 className="text-2xl display-font font-bold text-gray-800">Panneau d'Administration</h2>
          <button onClick={handleEmailBackup} className="text-sm bg-blue-50 text-blue-600 px-3 py-1 rounded hover:bg-blue-100 flex items-center gap-2">
             <Mail size={14} /> Backup
          </button>
@@ -348,6 +482,13 @@ export const Admin: React.FC = () => {
                          <Upload size={16} /> Importer
                      </button>
                      <input type="file" ref={fileInputRef} onChange={handleImport} accept=".json" className="hidden" />
+                     <button onClick={() => csvInputRef.current?.click()} className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+                         <Upload size={16} /> Importer CSV
+                     </button>
+                     <input type="file" ref={csvInputRef} onChange={handleImportCsv} accept=".csv" className="hidden" />
+                     <button onClick={handleGenerateBank} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 disabled:opacity-60" disabled={isGenerating}>
+                         {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Database size={16} />} Générer Banque IA
+                     </button>
                  </div>
                  
                  <div className="flex items-center gap-3">
@@ -368,6 +509,17 @@ export const Admin: React.FC = () => {
                     <span className="text-gray-300">|</span>
                     <div className="text-gray-500 text-sm whitespace-nowrap">{filteredQuestions.length} / {questions.length}</div>
                  </div>
+              </div>
+
+              <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 text-sm text-indigo-900">
+                  <div className="font-semibold mb-2">Génération IA de la banque (10 000)</div>
+                  <div className="flex flex-col md:flex-row gap-3 items-start md:items-center">
+                      <label className="text-xs">Total</label>
+                      <input type="number" min={100} step={100} value={generateTarget} onChange={(e) => setGenerateTarget(parseInt(e.target.value || '0', 10))} className="w-32 p-2 border rounded-md" />
+                      <label className="text-xs">Batch</label>
+                      <input type="number" min={10} step={10} value={generateBatch} onChange={(e) => setGenerateBatch(parseInt(e.target.value || '0', 10))} className="w-24 p-2 border rounded-md" />
+                      <div className="text-xs text-indigo-700">Progression: {generateProgress} / {generateTarget}</div>
+                  </div>
               </div>
 
               {isFormOpen && (
@@ -402,6 +554,10 @@ export const Admin: React.FC = () => {
                                   </select>
                               </div>
                           </div>
+                          <div>
+                              <label className="text-xs font-bold text-gray-500 uppercase">Thème</label>
+                              <input value={formData.topic || ''} onChange={e => setFormData({...formData, topic: e.target.value})} className="w-full mt-1 p-2 border rounded-md" placeholder="CORAN, HADITH, FIQH..." />
+                          </div>
                           <div className="flex justify-end gap-2">
                               <button type="button" onClick={() => setIsFormOpen(false)} className="px-4 py-2 text-gray-600">Annuler</button>
                               <button type="submit" className="px-4 py-2 bg-emerald-600 text-white rounded-lg">Enregistrer</button>
@@ -416,6 +572,7 @@ export const Admin: React.FC = () => {
                           <tr>
                               <th className="px-4 py-3 text-left">Question</th>
                               <th className="px-4 py-3 text-left">Niveau</th>
+                              <th className="px-4 py-3 text-left">Thème</th>
                               <th className="px-4 py-3 text-right">Actions</th>
                           </tr>
                       </thead>
@@ -428,6 +585,7 @@ export const Admin: React.FC = () => {
                                           {q.difficulty}
                                       </span>
                                   </td>
+                                  <td className="px-4 py-3 text-xs text-gray-600">{q.topic || '-'}</td>
                                   <td className="px-4 py-3 text-right flex justify-end gap-2">
                                       <button onClick={() => { setEditingQuestion(q); setFormData(q); setIsFormOpen(true); }} className="p-1 text-blue-500 hover:bg-blue-50 rounded"><Edit2 size={16} /></button>
                                       <button onClick={() => q.id && handleDelete(q.id)} className="p-1 text-red-500 hover:bg-red-50 rounded"><Trash2 size={16} /></button>
@@ -451,7 +609,7 @@ export const Admin: React.FC = () => {
                   <div className="bg-gray-50 p-4 rounded-lg flex justify-between items-center">
                       <div>
                           <p className="font-medium text-gray-900">Horaire Automatique</p>
-                          <p className="text-sm text-gray-500">20h00 - 00h00 (GMT)</p>
+                          <p className="text-sm text-gray-500">20h30 - 23h50 (GMT)</p>
                       </div>
                       <span className={`px-3 py-1 rounded-full text-xs font-bold ${!state.isManualOverride ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`}>
                           {!state.isManualOverride ? 'ACTIF' : 'INACTIF'}

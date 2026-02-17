@@ -104,7 +104,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
   return (
     <div className="flex items-center justify-center min-h-[80vh]">
-      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border-t-4 border-emerald-600">
+      <div className="bg-white/90 backdrop-blur p-8 rounded-2xl shadow-2xl w-full max-w-md border border-emerald-100">
         <div className="text-center mb-8">
            <div className="mx-auto w-24 h-24 bg-white rounded-full flex items-center justify-center mb-4 shadow-md overflow-hidden border-2 border-emerald-50">
              <img 
@@ -121,7 +121,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                }}
              />
            </div>
-          <h2 className="text-2xl font-bold text-gray-800">
+          <h2 className="text-2xl display-font font-bold text-gray-800">
             {isAdminAttempt ? 'Accès Administrateur' : (isLogin ? 'Connexion' : 'Inscription')}
           </h2>
           <p className="text-gray-500 mt-2 text-sm">Bienvenue au Quiz ASAA</p>

@@ -1,9 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { generateQuestions } from '../services/geminiService';
-import { Question, User, Difficulty } from '../types';
-import { saveResult, saveQuestion } from '../services/storageService';
-import { CheckCircle, XCircle, Loader2, ArrowRight, Timer, BrainCircuit, BarChart3, Star, Zap, Mail, Send } from 'lucide-react';
+import { Question, User } from '../types';
+import { saveResult, createDailyQuizIfNeeded, getQuestionsByIds, deactivateExpiredDailyQuiz } from '../services/storageService';
+import { CheckCircle, XCircle, Loader2, ArrowRight, Timer, Mail } from 'lucide-react';
 
 interface QuizProps {
   user: User;
@@ -20,21 +19,37 @@ export const Quiz: React.FC<QuizProps> = ({ user, onComplete }) => {
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState(25); // Slightly more time for harder Qs
   const [isSaving, setIsSaving] = useState(false);
-  const [difficulty, setDifficulty] = useState<Difficulty>('ADAPTIVE');
+  const [error, setError] = useState<string>('');
 
   // --- 1. SETUP PHASE ---
-  const handleStartQuiz = async (selectedLevel: Difficulty) => {
-    setDifficulty(selectedLevel);
+  const handleStartQuiz = async () => {
     setPhase('LOADING');
-    
-    // Generate questions based on level
-    const data = await generateQuestions(6, selectedLevel);
-    
-    // Save generated questions to history silently
-    data.forEach(q => saveQuestion(q));
+    setError('');
 
-    setQuestions(data);
-    setPhase('PLAYING');
+    try {
+      const nowUtc = new Date();
+      await deactivateExpiredDailyQuiz(nowUtc);
+      const dailyQuiz = await createDailyQuizIfNeeded(nowUtc, 10);
+      if (!dailyQuiz || !dailyQuiz.isActive) {
+        setError("Le quiz du jour n'est pas disponible. Revenez demain insha'Allah.");
+        setPhase('SETUP');
+        return;
+      }
+
+      const data = await getQuestionsByIds(dailyQuiz.questionIds);
+      if (data.length === 0) {
+        setError("Aucune question disponible pour aujourd'hui.");
+        setPhase('SETUP');
+        return;
+      }
+
+      setQuestions(data);
+      setPhase('PLAYING');
+    } catch (e) {
+      console.error(e);
+      setError("Erreur lors du chargement du quiz.");
+      setPhase('SETUP');
+    }
   };
 
   // --- 2. TIMER EFFECT ---
@@ -83,7 +98,7 @@ As-salamu alaykum,
 Voici le résultat du quiz pour le participant : ${user.username}
 
 SCORE : ${score} / ${questions.length * 5}
-Niveau : ${difficulty}
+Niveau : Quiz du jour (Difficile)
 Questions posées : ${questions.length}
 Date : ${new Date().toLocaleString('fr-FR')}
 
@@ -101,7 +116,7 @@ Association des Serviteurs d'Allah Azawajal (ASAA).
         score: score,
         totalQuestions: questions.length,
         date: new Date().toISOString(),
-        difficultyLevel: difficulty
+        difficultyLevel: 'DAILY'
       });
     } catch (error) {
       console.error("Failed to save results", error);
@@ -123,49 +138,25 @@ Association des Serviteurs d'Allah Azawajal (ASAA).
     return (
       <div className="max-w-xl mx-auto space-y-6 animate-in fade-in zoom-in duration-300">
         <div className="text-center mb-8">
-          <h2 className="text-3xl font-serif font-bold text-gray-800">Choisissez votre défi</h2>
-          <p className="text-gray-500 mt-2">Sélectionnez le niveau de difficulté pour ce quiz.</p>
+          <h2 className="text-3xl display-font font-bold text-gray-800">Quiz du jour</h2>
+          <p className="text-gray-500 mt-2">10 questions difficiles, renouvelées chaque jour.</p>
         </div>
 
+        {error && (
+          <div className="bg-red-50 text-red-700 border border-red-100 rounded-lg p-3 text-sm text-center">
+            {error}
+          </div>
+        )}
+
         <div className="grid gap-4">
-          <button onClick={() => handleStartQuiz('EASY')} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-green-400 transition flex items-center gap-4 text-left group">
-            <div className="p-3 bg-green-100 text-green-600 rounded-full group-hover:scale-110 transition">
-              <Star size={24} />
-            </div>
-            <div>
-              <h3 className="font-bold text-gray-800">Débutant (Facile)</h3>
-              <p className="text-xs text-gray-500">Idéal pour réviser les bases.</p>
-            </div>
-          </button>
-
-          <button onClick={() => handleStartQuiz('MEDIUM')} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-400 transition flex items-center gap-4 text-left group">
-            <div className="p-3 bg-blue-100 text-blue-600 rounded-full group-hover:scale-110 transition">
-              <BarChart3 size={24} />
-            </div>
-            <div>
-              <h3 className="font-bold text-gray-800">Intermédiaire</h3>
-              <p className="text-xs text-gray-500">Pour ceux qui ont de bonnes connaissances.</p>
-            </div>
-          </button>
-
-          <button onClick={() => handleStartQuiz('HARD')} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-orange-400 transition flex items-center gap-4 text-left group">
-            <div className="p-3 bg-orange-100 text-orange-600 rounded-full group-hover:scale-110 transition">
-              <Zap size={24} />
-            </div>
-            <div>
-              <h3 className="font-bold text-gray-800">Avancé</h3>
-              <p className="text-xs text-gray-500">Questions détaillées et complexes.</p>
-            </div>
-          </button>
-
-          <button onClick={() => handleStartQuiz('ADAPTIVE')} className="bg-gradient-to-r from-indigo-900 to-purple-900 text-white p-5 rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.02] transition flex items-center gap-4 text-left relative overflow-hidden">
+          <button onClick={handleStartQuiz} className="bg-gradient-to-r from-emerald-700 to-emerald-900 text-white p-5 rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.02] transition flex items-center gap-4 text-left relative overflow-hidden">
             <div className="absolute top-0 right-0 p-10 bg-white/5 rounded-full -mr-10 -mt-10"></div>
             <div className="p-3 bg-white/20 rounded-full backdrop-blur-sm">
-              <BrainCircuit size={28} className="text-amber-300" />
+              <Timer size={28} className="text-amber-300" />
             </div>
             <div>
-              <h3 className="font-bold text-lg text-amber-300">Mode Progressif (IA)</h3>
-              <p className="text-xs text-indigo-200">La difficulté augmente à chaque étape.</p>
+              <h3 className="font-bold text-lg text-amber-200">Démarrer le quiz</h3>
+              <p className="text-xs text-emerald-100">Disponible chaque jour de 20h30 à 23h50 (GMT).</p>
             </div>
           </button>
         </div>
@@ -178,7 +169,7 @@ Association des Serviteurs d'Allah Azawajal (ASAA).
       <div className="flex flex-col items-center justify-center min-h-[400px]">
         <Loader2 className="w-16 h-16 text-emerald-600 animate-spin mb-6" />
         <h3 className="text-xl font-bold text-gray-700 mb-2">L'IA prépare votre quiz...</h3>
-        <p className="text-sm text-gray-500">Niveau sélectionné : {difficulty === 'ADAPTIVE' ? 'Progressif' : difficulty}</p>
+        <p className="text-sm text-gray-500">Quiz du jour en cours de chargement</p>
         <div className="flex gap-2 mt-4">
            <span className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce delay-75"></span>
            <span className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce delay-150"></span>
@@ -195,10 +186,10 @@ Association des Serviteurs d'Allah Azawajal (ASAA).
         <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
           <span className="text-4xl">{score >= maxScore / 2 ? '🏆' : '📚'}</span>
         </div>
-        <h2 className="text-2xl font-bold text-gray-800 mb-2">Quiz Terminé !</h2>
+        <h2 className="text-2xl display-font font-bold text-gray-800 mb-2">Quiz Terminé !</h2>
         
         <div className="text-5xl font-bold text-emerald-600 mb-2">{score}/{maxScore}</div>
-        <p className="text-sm text-gray-500 mb-8">Votre score final ({difficulty})</p>
+        <p className="text-sm text-gray-500 mb-8">Votre score final (Quiz du jour)</p>
 
         <div className="space-y-3">
             <button 

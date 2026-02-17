@@ -1,11 +1,15 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { Question, Difficulty } from "../types";
+import { apiPost, hasApiBase } from "./apiClient";
 
-const apiKey = process.env.API_KEY || ''; 
+const apiKey = ((import.meta as any).env?.VITE_GEMINI_API_KEY || '') as string;
 const ai = new GoogleGenAI({ apiKey });
 
 export const generateQuestions = async (count: number = 6, difficulty: Difficulty = 'ADAPTIVE'): Promise<Question[]> => {
+  if (hasApiBase()) {
+    return apiPost<Question[]>('/questions/generate', { count, difficulty, mode: 'quiz' });
+  }
   if (!apiKey) {
     console.warn("No API Key provided. Returning mock data.");
     return mockQuestions.slice(0, count);
@@ -92,6 +96,61 @@ export const generateQuestions = async (count: number = 6, difficulty: Difficult
   }
 };
 
+export const generateBankQuestions = async (count: number = 50): Promise<Question[]> => {
+  if (hasApiBase()) {
+    return apiPost<Question[]>('/questions/generate', { count, mode: 'bank' });
+  }
+  if (!apiKey) {
+    console.warn("No API Key provided. Returning mock data.");
+    return mockQuestions.slice(0, count);
+  }
+
+  try {
+    const prompt = `
+      Génère ${count} questions QCM difficiles sur l'Islam en français.
+      Couvre TOUS les thèmes: Coran, Hadith, Fiqh, Sirah, Histoire, Aqida, Langue arabe, Biographies.
+      Règles:
+      1. Questions difficiles et précises.
+      2. 4 options, 1 seule correcte.
+      3. Donne une explication concise.
+      4. difficulty doit être HARD ou EXPERT.
+      5. Ajoute un champ topic parmi: CORAN, HADITH, FIQH, SIRAH, HISTOIRE, AQIDA, ARABE, BIO.
+      6. Pas de répétitions dans le lot.
+    `;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              questionText: { type: Type.STRING },
+              options: { type: Type.ARRAY, items: { type: Type.STRING } },
+              correctAnswerIndex: { type: Type.INTEGER },
+              explanation: { type: Type.STRING },
+              difficulty: { type: Type.STRING },
+              topic: { type: Type.STRING }
+            },
+            required: ["questionText", "options", "correctAnswerIndex", "explanation", "difficulty", "topic"]
+          }
+        }
+      }
+    });
+
+    const text = response.text;
+    if (!text) throw new Error("Réponse vide de l'IA");
+    const questions = JSON.parse(text) as Question[];
+    return questions.map(q => ({ ...q, source: 'AI' }));
+  } catch (error) {
+    console.error("Erreur lors de la génération des questions banque:", error);
+    return mockQuestions.slice(0, count);
+  }
+};
+
 const mockQuestions: Question[] = [
   {
     questionText: "Quelle sourate est connue comme le 'Cœur du Coran' ?",
@@ -99,6 +158,7 @@ const mockQuestions: Question[] = [
     correctAnswerIndex: 1,
     explanation: "Le Prophète (paix sur lui) a dit que tout a un cœur, et le cœur du Coran est la sourate Ya-Sin.",
     difficulty: "EASY",
+    topic: "CORAN",
     source: "MANUAL"
   },
   {
@@ -107,6 +167,7 @@ const mockQuestions: Question[] = [
     correctAnswerIndex: 1,
     explanation: "L'Hégire a eu lieu en 622 après J.C.",
     difficulty: "MEDIUM",
+    topic: "HISTOIRE",
     source: "MANUAL"
   },
   {
@@ -115,6 +176,7 @@ const mockQuestions: Question[] = [
     correctAnswerIndex: 2,
     explanation: "La Shahada est le fondement de la foi.",
     difficulty: "EASY",
+    topic: "AQIDA",
     source: "MANUAL"
   },
   {
@@ -123,6 +185,7 @@ const mockQuestions: Question[] = [
     correctAnswerIndex: 2,
     explanation: "Il y a 114 sourates.",
     difficulty: "EASY",
+    topic: "CORAN",
     source: "MANUAL"
   },
   {
@@ -131,6 +194,7 @@ const mockQuestions: Question[] = [
     correctAnswerIndex: 3,
     explanation: "Abu Bakr (ra) fut le premier Calife.",
     difficulty: "MEDIUM",
+    topic: "HISTOIRE",
     source: "MANUAL"
   },
   {
@@ -139,6 +203,7 @@ const mockQuestions: Question[] = [
      correctAnswerIndex: 2,
      explanation: "Maghrib est juste après le coucher.",
      difficulty: "EASY",
+     topic: "FIQH",
      source: "MANUAL"
   }
 ];

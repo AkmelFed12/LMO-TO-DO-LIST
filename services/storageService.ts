@@ -1,6 +1,7 @@
 
-import { User, QuizResult, GlobalState, Question, Badge, UserBadge } from '../types';
+import { User, QuizResult, GlobalState, Question, Badge, UserBadge, DailyQuiz } from '../types';
 import { Pool } from '@neondatabase/serverless';
+import { apiGet, apiPost, apiDelete, hasApiBase } from './apiClient';
 
 const CURRENT_USER_KEY = 'asaa_current_user';
 const LS_USERS_KEY = 'asaa_db_users';
@@ -8,15 +9,18 @@ const LS_RESULTS_KEY = 'asaa_db_results';
 const LS_GLOBAL_KEY = 'asaa_db_global_state';
 const LS_QUESTIONS_KEY = 'asaa_db_questions';
 const LS_BADGES_KEY = 'asaa_user_badges';
+const LS_DAILY_QUIZ_KEY = 'asaa_daily_quiz';
 
-// Try to initialize pool if URL exists in environment
-const dbUrl = process.env.DATABASE_URL;
+const preferApi = hasApiBase();
+
+// Try to initialize pool only if no API base is provided
+const dbUrl = !preferApi ? ((import.meta as any).env?.VITE_DATABASE_URL || '') : '';
 let pool: Pool | null = null;
 
 if (dbUrl) {
   pool = new Pool({ connectionString: dbUrl });
-} else {
-  console.warn("DATABASE_URL is not set. The app will use LocalStorage as a fallback.");
+} else if (!preferApi) {
+  console.warn("VITE_DATABASE_URL is not set. The app will use LocalStorage as a fallback.");
 }
 
 // --- Badge Definitions ---
@@ -31,6 +35,10 @@ export const BADGE_DEFINITIONS: Badge[] = [
 
 // --- Database Initialization ---
 export const initDB = async (): Promise<void> => {
+  if (preferApi) {
+    await apiPost<{ ok: boolean }>('/init');
+    return;
+  }
   if (!pool) {
     initLocalStorage();
     return;
@@ -55,9 +63,11 @@ export const initDB = async (): Promise<void> => {
         username TEXT NOT NULL,
         score INTEGER NOT NULL,
         total_questions INTEGER NOT NULL,
-        date TEXT NOT NULL
+        date TEXT NOT NULL,
+        difficulty_level TEXT
       );
     `);
+    await client.query(`ALTER TABLE results ADD COLUMN IF NOT EXISTS difficulty_level TEXT;`);
 
     // Create Questions Bank Table
     await client.query(`
@@ -68,7 +78,21 @@ export const initDB = async (): Promise<void> => {
         correct_index INTEGER NOT NULL,
         explanation TEXT,
         difficulty TEXT,
+        topic TEXT,
         source TEXT
+      );
+    `);
+    await client.query(`ALTER TABLE questions ADD COLUMN IF NOT EXISTS topic TEXT;`);
+
+    // Create Daily Quiz Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS daily_quiz (
+        id SERIAL PRIMARY KEY,
+        date TEXT NOT NULL UNIQUE,
+        question_ids JSONB NOT NULL,
+        created_at TEXT NOT NULL,
+        closes_at TEXT NOT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT true
       );
     `);
 
@@ -109,6 +133,7 @@ const initLocalStorage = () => {
   if (!localStorage.getItem(LS_RESULTS_KEY)) localStorage.setItem(LS_RESULTS_KEY, JSON.stringify([]));
   if (!localStorage.getItem(LS_QUESTIONS_KEY)) localStorage.setItem(LS_QUESTIONS_KEY, JSON.stringify([]));
   if (!localStorage.getItem(LS_BADGES_KEY)) localStorage.setItem(LS_BADGES_KEY, JSON.stringify([]));
+  if (!localStorage.getItem(LS_DAILY_QUIZ_KEY)) localStorage.setItem(LS_DAILY_QUIZ_KEY, JSON.stringify([]));
   if (!localStorage.getItem(LS_GLOBAL_KEY)) {
     localStorage.setItem(LS_GLOBAL_KEY, JSON.stringify({ isManualOverride: false, isQuizOpen: false }));
   }
@@ -118,6 +143,11 @@ const initLocalStorage = () => {
 // --- User Management ---
 export const saveUser = async (user: User): Promise<void> => {
   localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+
+  if (preferApi) {
+    await apiPost('/users', user);
+    return;
+  }
 
   if (pool) {
     try {
@@ -144,6 +174,9 @@ export const saveUser = async (user: User): Promise<void> => {
 };
 
 export const getUsers = async (): Promise<User[]> => {
+  if (preferApi) {
+    return apiGet<User[]>('/users');
+  }
   if (pool) {
     try {
       const client = await pool.connect();
@@ -177,12 +210,18 @@ export const saveResult = async (result: QuizResult): Promise<void> => {
   }
 
   // 1. Save Result
-  if (pool) {
+  if (preferApi) {
+    await apiPost('/results', result);
+    if (currentUser && currentUser.username === result.username) {
+      currentUser.lastPlayedDate = today;
+      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(currentUser));
+    }
+  } else if (pool) {
     try {
       const client = await pool.connect();
       await client.query(
-        'INSERT INTO results (username, score, total_questions, date) VALUES ($1, $2, $3, $4)',
-        [result.username, result.score, result.totalQuestions, result.date]
+        'INSERT INTO results (username, score, total_questions, date, difficulty_level) VALUES ($1, $2, $3, $4, $5)',
+        [result.username, result.score, result.totalQuestions, result.date, result.difficultyLevel || null]
       );
       await client.query(
         'UPDATE users SET last_played_date = $1 WHERE username = $2',
@@ -210,10 +249,13 @@ export const saveResult = async (result: QuizResult): Promise<void> => {
 };
 
 export const getResults = async (): Promise<QuizResult[]> => {
+  if (preferApi) {
+    return apiGet<QuizResult[]>('/results');
+  }
   if (pool) {
     try {
       const client = await pool.connect();
-      const result = await client.query('SELECT username, score, total_questions as "totalQuestions", date FROM results ORDER BY id DESC');
+      const result = await client.query('SELECT username, score, total_questions as "totalQuestions", date, difficulty_level as "difficultyLevel" FROM results ORDER BY id DESC');
       client.release();
       return result.rows;
     } catch (err) {
@@ -271,7 +313,9 @@ const checkBadges = async (username: string, currentResult: QuizResult) => {
 const awardBadge = async (username: string, badgeId: string) => {
   const dateEarned = new Date().toISOString();
   
-  if (pool) {
+  if (preferApi) {
+    await apiPost('/badges', { username, badgeId, dateEarned });
+  } else if (pool) {
     try {
       const client = await pool.connect();
       await client.query(
@@ -290,6 +334,9 @@ const awardBadge = async (username: string, badgeId: string) => {
 };
 
 export const getUserBadges = async (username: string): Promise<UserBadge[]> => {
+  if (preferApi) {
+    return apiGet<UserBadge[]>(`/badges/${encodeURIComponent(username)}`);
+  }
   if (pool) {
     try {
       const client = await pool.connect();
@@ -305,20 +352,24 @@ export const getUserBadges = async (username: string): Promise<UserBadge[]> => {
 // --- Question Bank Management ---
 
 export const saveQuestion = async (question: Question): Promise<void> => {
+  if (preferApi) {
+    await apiPost('/questions', question);
+    return;
+  }
   if (pool) {
     try {
       const client = await pool.connect();
       if (question.id) {
          // Update
          await client.query(
-             `UPDATE questions SET question_text=$1, options=$2, correct_index=$3, explanation=$4, difficulty=$5, source=$6 WHERE id=$7`,
-             [question.questionText, JSON.stringify(question.options), question.correctAnswerIndex, question.explanation, question.difficulty, question.source || 'MANUAL', question.id]
+             `UPDATE questions SET question_text=$1, options=$2, correct_index=$3, explanation=$4, difficulty=$5, topic=$6, source=$7 WHERE id=$8`,
+             [question.questionText, JSON.stringify(question.options), question.correctAnswerIndex, question.explanation, question.difficulty, question.topic || null, question.source || 'MANUAL', question.id]
          );
       } else {
          // Insert
          await client.query(
-            `INSERT INTO questions (question_text, options, correct_index, explanation, difficulty, source) VALUES ($1, $2, $3, $4, $5, $6)`,
-            [question.questionText, JSON.stringify(question.options), question.correctAnswerIndex, question.explanation, question.difficulty, question.source || 'MANUAL']
+            `INSERT INTO questions (question_text, options, correct_index, explanation, difficulty, topic, source) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [question.questionText, JSON.stringify(question.options), question.correctAnswerIndex, question.explanation, question.difficulty, question.topic || null, question.source || 'MANUAL']
          );
       }
       client.release();
@@ -340,6 +391,10 @@ export const saveQuestion = async (question: Question): Promise<void> => {
 };
 
 export const deleteQuestion = async (id: number): Promise<void> => {
+    if (preferApi) {
+        await apiDelete(`/questions/${id}`);
+        return;
+    }
     if (pool) {
         try {
             const client = await pool.connect();
@@ -356,11 +411,14 @@ export const deleteQuestion = async (id: number): Promise<void> => {
 };
 
 export const getQuestionsBank = async (): Promise<Question[]> => {
+    if (preferApi) {
+        return apiGet<Question[]>('/questions');
+    }
     if (pool) {
         try {
             const client = await pool.connect();
             const result = await client.query(`
-                SELECT id, question_text as "questionText", options, correct_index as "correctAnswerIndex", explanation, difficulty, source 
+                SELECT id, question_text as "questionText", options, correct_index as "correctAnswerIndex", explanation, difficulty, topic, source 
                 FROM questions ORDER BY id DESC
             `);
             client.release();
@@ -369,11 +427,41 @@ export const getQuestionsBank = async (): Promise<Question[]> => {
             console.error("DB Error getQuestionsBank:", err);
         }
     }
-    return JSON.parse(localStorage.getItem(LS_QUESTIONS_KEY) || '[]');
+  return JSON.parse(localStorage.getItem(LS_QUESTIONS_KEY) || '[]');
+};
+
+export const getQuestionsByIds = async (ids: number[]): Promise<Question[]> => {
+  if (ids.length === 0) return [];
+
+  if (preferApi) {
+    const query = ids.join(',');
+    return apiGet<Question[]>(`/questions/by-ids?ids=${encodeURIComponent(query)}`);
+  }
+  if (pool) {
+    try {
+      const client = await pool.connect();
+      const result = await client.query(`
+        SELECT id, question_text as "questionText", options, correct_index as "correctAnswerIndex", explanation, difficulty, topic, source
+        FROM questions WHERE id = ANY($1::int[])
+      `, [ids]);
+      client.release();
+      const map = new Map(result.rows.map((q: Question) => [q.id, q]));
+      return ids.map(id => map.get(id)).filter(Boolean) as Question[];
+    } catch (err) {
+      console.error("DB Error getQuestionsByIds:", err);
+    }
+  }
+
+  const questions = JSON.parse(localStorage.getItem(LS_QUESTIONS_KEY) || '[]');
+  const map = new Map(questions.map((q: Question) => [q.id, q]));
+  return ids.map(id => map.get(id)).filter(Boolean) as Question[];
 };
 
 // --- Global State Management ---
 export const getGlobalState = async (): Promise<GlobalState> => {
+  if (preferApi) {
+    return apiGet<GlobalState>('/global');
+  }
   if (pool) {
     try {
       const client = await pool.connect();
@@ -389,6 +477,10 @@ export const getGlobalState = async (): Promise<GlobalState> => {
 };
 
 export const saveGlobalState = async (state: GlobalState): Promise<void> => {
+  if (preferApi) {
+    await apiPost('/global', state);
+    return;
+  }
   if (pool) {
     try {
       const client = await pool.connect();
@@ -404,4 +496,175 @@ export const saveGlobalState = async (state: GlobalState): Promise<void> => {
     }
   }
   localStorage.setItem(LS_GLOBAL_KEY, JSON.stringify(state));
+};
+
+// --- Daily Quiz Management ---
+
+const getUtcDateKey = (date: Date) => date.toISOString().split('T')[0];
+
+export const getDailyQuiz = async (dateKey: string): Promise<DailyQuiz | null> => {
+  if (preferApi) {
+    return apiGet<DailyQuiz | null>(`/daily-quiz/${encodeURIComponent(dateKey)}`);
+  }
+  if (pool) {
+    try {
+      const client = await pool.connect();
+      const res = await client.query(`
+        SELECT id, date, question_ids as "questionIds", created_at as "createdAt", closes_at as "closesAt", is_active as "isActive"
+        FROM daily_quiz WHERE date = $1
+      `, [dateKey]);
+      client.release();
+      return res.rows[0] || null;
+    } catch (err) {
+      console.error("DB Error getDailyQuiz:", err);
+    }
+  }
+
+  const rows = JSON.parse(localStorage.getItem(LS_DAILY_QUIZ_KEY) || '[]') as DailyQuiz[];
+  return rows.find(r => r.date === dateKey) || null;
+};
+
+export const saveDailyQuiz = async (quiz: DailyQuiz): Promise<void> => {
+  if (preferApi) {
+    await apiPost('/daily-quiz', quiz);
+    return;
+  }
+  if (pool) {
+    try {
+      const client = await pool.connect();
+      await client.query(`
+        INSERT INTO daily_quiz (date, question_ids, created_at, closes_at, is_active)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (date) DO UPDATE SET question_ids=$2, created_at=$3, closes_at=$4, is_active=$5
+      `, [quiz.date, JSON.stringify(quiz.questionIds), quiz.createdAt, quiz.closesAt, quiz.isActive]);
+      client.release();
+      return;
+    } catch (err) {
+      console.error("DB Error saveDailyQuiz:", err);
+    }
+  }
+
+  const rows = JSON.parse(localStorage.getItem(LS_DAILY_QUIZ_KEY) || '[]') as DailyQuiz[];
+  const idx = rows.findIndex(r => r.date === quiz.date);
+  if (idx >= 0) rows[idx] = quiz;
+  else rows.push(quiz);
+  localStorage.setItem(LS_DAILY_QUIZ_KEY, JSON.stringify(rows));
+};
+
+export const deactivateExpiredDailyQuiz = async (nowUtc: Date): Promise<void> => {
+  const nowIso = nowUtc.toISOString();
+
+  if (preferApi) {
+    await apiPost('/daily-quiz/deactivate', { nowIso });
+    return;
+  }
+  if (pool) {
+    try {
+      const client = await pool.connect();
+      await client.query(`
+        UPDATE daily_quiz SET is_active = false
+        WHERE is_active = true AND closes_at < $1
+      `, [nowIso]);
+      client.release();
+      return;
+    } catch (err) {
+      console.error("DB Error deactivateExpiredDailyQuiz:", err);
+    }
+  }
+
+  const rows = JSON.parse(localStorage.getItem(LS_DAILY_QUIZ_KEY) || '[]') as DailyQuiz[];
+  let changed = false;
+  const updated = rows.map(r => {
+    if (r.isActive && r.closesAt < nowIso) {
+      changed = true;
+      return { ...r, isActive: false };
+    }
+    return r;
+  });
+  if (changed) localStorage.setItem(LS_DAILY_QUIZ_KEY, JSON.stringify(updated));
+};
+
+export const getUsedQuestionIds = async (): Promise<Set<number>> => {
+  if (preferApi) {
+    const ids = await apiGet<number[]>('/questions/used-ids');
+    return new Set(ids);
+  }
+  if (pool) {
+    try {
+      const client = await pool.connect();
+      const res = await client.query(`SELECT question_ids FROM daily_quiz`);
+      client.release();
+      const used = new Set<number>();
+      res.rows.forEach(r => {
+        const ids = r.question_ids || [];
+        ids.forEach((id: number) => used.add(id));
+      });
+      return used;
+    } catch (err) {
+      console.error("DB Error getUsedQuestionIds:", err);
+    }
+  }
+
+  const rows = JSON.parse(localStorage.getItem(LS_DAILY_QUIZ_KEY) || '[]') as DailyQuiz[];
+  const used = new Set<number>();
+  rows.forEach(r => r.questionIds.forEach(id => used.add(id)));
+  return used;
+};
+
+export const createDailyQuizIfNeeded = async (
+  nowUtc: Date,
+  totalQuestions = 10
+): Promise<DailyQuiz | null> => {
+  if (preferApi) {
+    return apiPost<DailyQuiz | null>('/daily-quiz/create-if-needed', {
+      nowUtc: nowUtc.toISOString(),
+      totalQuestions
+    });
+  }
+  const dateKey = getUtcDateKey(nowUtc);
+  const existing = await getDailyQuiz(dateKey);
+  if (existing) return existing.isActive ? existing : null;
+
+  const questions = await getQuestionsBank();
+  if (questions.length === 0) return null;
+
+  const usedIds = await getUsedQuestionIds();
+  const hardFirst = questions.filter(q => (q.difficulty === 'HARD' || q.difficulty === 'EXPERT'));
+  const candidates = hardFirst.length >= totalQuestions ? hardFirst : questions;
+
+  const available = candidates.filter(q => q.id && !usedIds.has(q.id));
+  const fallback = candidates.filter(q => q.id && usedIds.has(q.id));
+
+  const pick = (list: Question[], count: number) => {
+    const copy = [...list];
+    const out: Question[] = [];
+    while (copy.length > 0 && out.length < count) {
+      const idx = Math.floor(Math.random() * copy.length);
+      const [q] = copy.splice(idx, 1);
+      out.push(q);
+    }
+    return out;
+  };
+
+  let selected = pick(available, totalQuestions);
+  if (selected.length < totalQuestions) {
+    selected = selected.concat(pick(fallback, totalQuestions - selected.length));
+  }
+
+  const questionIds = selected.map(q => q.id!).slice(0, totalQuestions);
+  if (questionIds.length === 0) return null;
+
+  const createdAt = nowUtc.toISOString();
+  const closesAt = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth(), nowUtc.getUTCDate(), 23, 50, 0)).toISOString();
+
+  const quiz: DailyQuiz = {
+    date: dateKey,
+    questionIds,
+    createdAt,
+    closesAt,
+    isActive: true
+  };
+
+  await saveDailyQuiz(quiz);
+  return quiz;
 };

@@ -13,7 +13,8 @@
     "react-dom": "^19.2.0",
     "react": "^19.2.0",
     "@google/genai": "^1.30.0",
-    "@neondatabase/serverless": "^0.10.4"
+    "@neondatabase/serverless": "^0.10.4",
+    "express": "^4.19.2"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
