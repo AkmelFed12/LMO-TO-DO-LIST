@@ -5,6 +5,14 @@ import { GoogleGenAI, Type } from '@google/genai';
 const app = express();
 app.use(express.json({ limit: '2mb' }));
 
+// Normalize Vercel /api prefix so routes work the same locally and in prod
+app.use((req, _res, next) => {
+  if (req.url.startsWith('/api/')) {
+    req.url = req.url.replace(/^\/api/, '');
+  }
+  next();
+});
+
 const dbUrl = process.env.DATABASE_URL || '';
 const pool = dbUrl ? new Pool({ connectionString: dbUrl }) : null;
 
