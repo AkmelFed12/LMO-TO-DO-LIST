@@ -4,7 +4,11 @@ import { Question, Difficulty } from "../types";
 import { apiPost, hasApiBase } from "./apiClient";
 
 const apiKey = ((import.meta as any).env?.VITE_GEMINI_API_KEY || '') as string;
-const ai = new GoogleGenAI({ apiKey });
+
+const getAiClient = () => {
+  if (!apiKey) return null;
+  return new GoogleGenAI({ apiKey });
+};
 
 export const generateQuestions = async (count: number = 6, difficulty: Difficulty = 'ADAPTIVE'): Promise<Question[]> => {
   if (hasApiBase()) {
@@ -16,6 +20,10 @@ export const generateQuestions = async (count: number = 6, difficulty: Difficult
   }
 
   try {
+    const ai = getAiClient();
+    if (!ai) {
+      return mockQuestions.slice(0, count);
+    }
     let difficultyPrompt = "";
     
     switch(difficulty) {
@@ -106,6 +114,10 @@ export const generateBankQuestions = async (count: number = 50): Promise<Questio
   }
 
   try {
+    const ai = getAiClient();
+    if (!ai) {
+      return mockQuestions.slice(0, count);
+    }
     const prompt = `
       Génère ${count} questions QCM difficiles sur l'Islam en français.
       Couvre TOUS les thèmes: Coran, Hadith, Fiqh, Sirah, Histoire, Aqida, Langue arabe, Biographies.
