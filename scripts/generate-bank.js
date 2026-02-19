@@ -1,8 +1,10 @@
 const API_BASE = process.env.API_BASE || 'https://asaaqi.vercel.app/api';
 const TOTAL = parseInt(process.env.TOTAL || '50000', 10);
-const BATCH = parseInt(process.env.BATCH || '50', 10);
+const BATCH = parseInt(process.env.BATCH || '20', 10);
+const PER_MIN = parseInt(process.env.PER_MIN || '10', 10);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const intervalMs = Math.ceil(60000 / Math.max(1, PER_MIN));
 
 const post = async (path, body) => {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -39,7 +41,7 @@ const run = async () => {
     }
 
     console.log(`Saved ${saved}/${TOTAL}`);
-    await sleep(500);
+    await sleep(intervalMs);
   }
 
   console.log('Done');
