@@ -22,7 +22,7 @@ const HADITHS = [
   "La religion, c'est le bon comportement."
 ];
 
-const App: React.FC = () => {
+const App: React.FC = () => {b
   const [user, setUser] = useState<User | null>(null);
   const [view, setView] = useState<AppView>(AppView.AUTH);
   const [hadith, setHadith] = useState("");
