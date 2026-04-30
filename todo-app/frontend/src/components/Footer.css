@@ -1,0 +1,70 @@
+.app-footer {
+  width: 100%;
+  margin-top: auto;
+  padding: 2rem 1rem;
+  background: #f7f9fc;
+  border-top: 1px solid #d7deeb;
+  text-align: center;
+}
+
+.footer-content {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.footer-text {
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+  color: #495057;
+  font-weight: 500;
+}
+
+.footer-signature {
+  margin: 0.75rem 0 0 0;
+  font-size: 0.75rem;
+  letter-spacing: 1px;
+  color: #868e96;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.whatsapp-fab {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #25d366;
+  color: #ffffff;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.2);
+  z-index: 1200;
+}
+
+.whatsapp-fab:hover {
+  transform: translateY(-2px);
+}
+
+@media (max-width: 768px) {
+  .app-footer {
+    padding: 1.5rem 1rem;
+  }
+
+  .footer-text {
+    font-size: 0.85rem;
+  }
+
+  .footer-signature {
+    font-size: 0.7rem;
+  }
+
+  .whatsapp-fab {
+    width: 48px;
+    height: 48px;
+    right: 0.75rem;
+    bottom: 0.75rem;
+  }
+}
