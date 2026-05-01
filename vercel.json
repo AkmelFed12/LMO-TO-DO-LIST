@@ -1,11 +1,13 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
-  "outputDirectory": "todo-app/frontend/dist",
   "builds": [
     {
       "src": "todo-app/frontend/package.json",
-      "use": "@vercel/static-build"
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
     },
     {
       "src": "todo-app/backend/api/index.ts",
