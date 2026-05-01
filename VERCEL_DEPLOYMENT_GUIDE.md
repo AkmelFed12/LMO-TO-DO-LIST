@@ -33,9 +33,9 @@ Après le prochain déploiement automatique :
 2. Si 404 persiste, vérifiez les logs Vercel
 
 ### 4. Commandes de build personnalisées (si nécessaire)
-Si le build échoue, ajoutez dans les settings Vercel :
+Si le build échoue encore, ajoutez dans les settings Vercel :
 - Build Command: `cd todo-app/frontend && npm install && npm run build`
-- Output Directory: `todo-app/frontend/dist`
+- Output Directory: `todo-app/frontend/dist` (devrait être automatique maintenant)
 
 ## 🚀 Test final
 Une fois déployé, testez :
