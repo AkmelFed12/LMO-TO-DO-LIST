@@ -131,7 +131,7 @@ export const getTaskSummary = async (req: AuthRequest, res: Response) => {
     const workspaceStats = await prisma.task.groupBy({
       by: ['workspace'],
       where: { userId, archived: false },
-      _count: { _all: true },
+      _count: true,
     });
 
     res.json({
@@ -141,7 +141,7 @@ export const getTaskSummary = async (req: AuthRequest, res: Response) => {
       archivedTasks,
       workspaceStats: workspaceStats.reduce((acc, item) => ({
         ...acc,
-        [item.workspace]: item._count._all,
+        [item.workspace]: item._count,
       }), {} as Record<string, number>),
     });
   } catch (error) {
