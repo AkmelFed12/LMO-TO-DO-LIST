@@ -6,23 +6,33 @@
 - ✅ Configuration Vercel mise à jour avec chemins absolus
 - ✅ Migration PostgreSQL terminée
 - ✅ Code poussé sur GitHub
+- ✅ Base de données Neon déjà configurée
 
 ## 🔧 Configuration Vercel requise
 
 ### 1. Variables d'environnement
-Dans le dashboard Vercel (https://vercel.com/dashboard), allez dans votre projet et ajoutez :
+Puisque vous utilisez **Neon intégré à Vercel**, la `DATABASE_URL` est automatiquement fournie.
+
+Dans le dashboard Vercel (https://vercel.com/dashboard), allez dans votre projet et ajoutez seulement :
 
 ```
-DATABASE_URL=postgresql://neondb_owner:npg_8SVyfp6oAOal@ep-bitter-union-anrsephh-pooler.c-6.us-east-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require
 JWT_SECRET=lmo_todo_jwt_secret_key_2024_secure
 ```
 
-### 2. Vérification du déploiement
+**Note**: La variable `DATABASE_URL` sera automatiquement injectée par Vercel/Neon.
+
+### 2. Vérification de l'intégration Neon
+Dans votre dashboard Vercel :
+1. Allez dans l'onglet **Storage**
+2. Vérifiez que Neon est connecté
+3. La `DATABASE_URL` devrait apparaître dans les variables d'environnement
+
+### 3. Vérification du déploiement
 Après le prochain déploiement automatique :
 1. Testez l'inscription sur https://lmo-to-do-list.vercel.app
 2. Si 404 persiste, vérifiez les logs Vercel
 
-### 3. Commandes de build personnalisées (si nécessaire)
+### 4. Commandes de build personnalisées (si nécessaire)
 Si le build échoue, ajoutez dans les settings Vercel :
 - Build Command: `cd todo-app/frontend && npm install && npm run build`
 - Output Directory: `todo-app/frontend/dist`
