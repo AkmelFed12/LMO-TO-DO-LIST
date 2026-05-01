@@ -23,8 +23,11 @@ const Register = () => {
       localStorage.setItem('token', res.data.token);
       navigate('/');
     } catch (error) {
-      setError('Registration failed. Please try again later.');
-      console.error(error);
+      const message = axios.isAxiosError(error)
+        ? error.response?.data?.message || 'Registration failed. Please try again later.'
+        : 'Registration failed. Please try again later.';
+      setError(message);
+      console.error('Registration error:', error);
     } finally {
       setLoading(false);
     }

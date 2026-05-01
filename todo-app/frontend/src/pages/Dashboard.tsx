@@ -129,6 +129,7 @@ const Dashboard = () => {
     focusMinutes: '25',
   });
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const addTaskRef = useRef<HTMLDivElement | null>(null);
   const intervalRef = useRef<number | null>(null);
   const navigate = useNavigate();
 
@@ -554,6 +555,10 @@ const Dashboard = () => {
     navigate('/login');
   };
 
+  const scrollToAddTask = () => {
+    addTaskRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   const filteredTasks = useMemo(
     () =>
       tasks
@@ -653,7 +658,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <div className="add-task-section">
+        <div className="add-task-section" ref={addTaskRef}>
           <div className="section-header-row">
             <h2>Add New Task</h2>
             <div className="filter-group">
@@ -821,6 +826,36 @@ const Dashboard = () => {
           </div>
         </div>
       )}
+      <div className="mobile-action-bar">
+        <button type="button" className="mobile-action-btn" onClick={scrollToAddTask}>
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+          Add
+        </button>
+        <button
+          type="button"
+          className="mobile-action-btn"
+          onClick={() => activeFocusTask ? setFocusRunning(prev => !prev) : scrollToAddTask()}
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+            <path d="M12 7v5l3 2m6-2a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+          Focus
+        </button>
+        <button type="button" className="mobile-action-btn" onClick={() => navigate('/settings')}>
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+            <path d="M12 15.5A3.5 3.5 0 1 0 12 8.5m8.5 3.5-1.7-.7-.5-1.2.7-1.7-1.8-1.8-1.7.7-1.2-.5L13 3.5h-2l-.7 1.7-1.2.5-1.7-.7-1.8 1.8.7 1.7-.5 1.2-1.7.7v2l1.7.7.5 1.2-.7 1.7 1.8 1.8 1.7-.7 1.2.5.7 1.7h2l.7-1.7 1.2-.5 1.7.7 1.8-1.8-.7-1.7.5-1.2 1.7-.7Z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </svg>
+          Settings
+        </button>
+        <button type="button" className="mobile-action-btn" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+            <path d="m6 14 6-6 6 6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Top
+        </button>
+      </div>
       <Footer />
     </div>
   );
