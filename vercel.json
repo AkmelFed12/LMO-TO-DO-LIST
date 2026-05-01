@@ -25,10 +25,3 @@
     }
   ]
 }
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/todo-app/frontend/dist/$1"
-    }
-  ]
-}
