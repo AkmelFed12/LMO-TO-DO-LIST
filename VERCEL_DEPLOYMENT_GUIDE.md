@@ -4,6 +4,7 @@
 - ✅ Frontend build réussi
 - ✅ Backend build réussi
 - ✅ Configuration Vercel mise à jour avec chemins absolus
+- ✅ Migration PostgreSQL terminée
 - ✅ Code poussé sur GitHub
 
 ## 🔧 Configuration Vercel requise
@@ -12,7 +13,7 @@
 Dans le dashboard Vercel (https://vercel.com/dashboard), allez dans votre projet et ajoutez :
 
 ```
-DATABASE_URL=file:./dev.db
+DATABASE_URL=postgresql://neondb_owner:npg_8SVyfp6oAOal@ep-bitter-union-anrsephh-pooler.c-6.us-east-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require
 JWT_SECRET=lmo_todo_jwt_secret_key_2024_secure
 ```
 
