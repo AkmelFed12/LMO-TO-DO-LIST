@@ -17,11 +17,11 @@
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "/todo-app/backend/api/index.ts"
+      "dest": "/api/$1"
     },
     {
       "src": "/(.*)",
-      "dest": "/todo-app/frontend/dist/$1"
+      "dest": "/$1"
     }
   ]
 }
